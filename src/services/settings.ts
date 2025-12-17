@@ -143,22 +143,56 @@ export async function resetSupabaseData(): Promise<void> {
   // Clear tables in order to respect foreign key constraints
   for (const table of TABLES_TO_CLEAR) {
     try {
-      const { error } = await supabase
+      // Fetch all rows to get their IDs
+      const { data: allRows, error: fetchError } = await supabase
         .from(table)
-        .delete()
-        .neq('id', null);
+        .select('id');
 
-      if (error && error.code !== 'PGRST116') {
-        // PGRST116 means no rows found, which is fine
-        throw new Error(`Failed to clear table ${table}: ${error.message}`);
+      // If no rows found or table doesn't exist, skip
+      if (fetchError) {
+        if (fetchError.code === 'PGRST116' || fetchError.message?.includes('does not exist')) {
+          console.warn(`Table ${table} may not exist or is already empty`);
+          continue;
+        }
+        // For other errors, try to continue - might be empty table
+        console.warn(`Error fetching from ${table}:`, fetchError.message);
+        continue;
+      }
+
+      // If table is empty, skip
+      if (!allRows || allRows.length === 0) {
+        continue;
+      }
+
+      // Delete rows in batches to avoid potential issues
+      const batchSize = 100;
+      for (let i = 0; i < allRows.length; i += batchSize) {
+        const batch = allRows.slice(i, i + batchSize);
+        const ids = batch.map(row => row.id).filter(Boolean);
+        
+        if (ids.length > 0) {
+          const { error: deleteError } = await supabase
+            .from(table)
+            .delete()
+            .in('id', ids);
+
+          if (deleteError) {
+            throw new Error(`Failed to clear table ${table}: ${deleteError.message}`);
+          }
+        }
       }
     } catch (error: any) {
       // If table doesn't exist or has no rows, continue
-      if (error?.code === 'PGRST116' || error?.message?.includes('relation') || error?.message?.includes('does not exist')) {
+      if (
+        error?.code === 'PGRST116' ||
+        error?.message?.includes('relation') ||
+        error?.message?.includes('does not exist') ||
+        error?.message?.includes('No rows found')
+      ) {
         console.warn(`Table ${table} may not exist or is already empty:`, error.message);
         continue;
       }
-      throw error;
+      throw new Error(`Failed to clear table ${table}: ${error.message}`);
     }
   }
 }
