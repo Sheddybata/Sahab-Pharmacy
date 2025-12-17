@@ -37,37 +37,101 @@ export async function fetchUserById(id: string): Promise<User | null> {
 }
 
 export async function fetchUserByUsername(username: string): Promise<User | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('username', username)
-    .maybeSingle();
+  // Trim whitespace from username
+  const normalizedUsername = username.trim();
+  
+  try {
+    // Try exact match first
+    let { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('username', normalizedUsername)
+      .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(`Failed to fetch user: ${error.message}`);
+    // If exact match fails, try case-insensitive match
+    if (!data && error?.code === 'PGRST116') {
+      const { data: allUsers, error: allUsersError } = await supabase
+        .from('profiles')
+        .select('*');
+      
+      if (allUsersError) {
+        throw allUsersError;
+      }
+      
+      if (allUsers) {
+        data = allUsers.find(
+          (u: any) => u.username?.toLowerCase() === normalizedUsername.toLowerCase()
+        ) || null;
+        error = null;
+      }
+    }
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to fetch user: ${error.message}`);
+    }
+
+    return data ? mapSupabaseProfileToUser(data) : null;
+  } catch (error: any) {
+    // Check if it's a Supabase connection error
+    const errorMessage = error?.message || String(error);
+    if (
+      errorMessage.includes('Failed to fetch') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('paused') ||
+      errorMessage.includes('unavailable') ||
+      errorMessage.includes('connection') ||
+      error?.code === 'PGRST301' // Supabase paused error code
+    ) {
+      throw new Error(
+        'Database connection failed. Your Supabase account may be paused. Please check your Supabase dashboard and restore your project.'
+      );
+    }
+    // Re-throw other errors
+    throw error;
   }
-
-  return data ? mapSupabaseProfileToUser(data) : null;
 }
 
 export async function verifyUserCredentials(
   username: string,
   password: string
 ): Promise<User | null> {
-  if (!username || !password) {
+  // Trim whitespace from inputs
+  const normalizedUsername = username.trim();
+  const normalizedPassword = password.trim();
+  
+  if (!normalizedUsername || !normalizedPassword) {
     return null;
   }
 
-  const user = await fetchUserByUsername(username);
-  if (!user || !user.active) {
-    return null;
-  }
+  try {
+    const user = await fetchUserByUsername(normalizedUsername);
+    if (!user || !user.active) {
+      return null;
+    }
 
-  if (user.password !== password) {
-    return null;
-  }
+    // Compare passwords with trimmed values
+    if (user.password?.trim() !== normalizedPassword) {
+      return null;
+    }
 
-  return user;
+    return user;
+  } catch (error: any) {
+    // Check if it's a Supabase connection error
+    const errorMessage = error?.message || String(error);
+    if (
+      errorMessage.includes('Failed to fetch') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('paused') ||
+      errorMessage.includes('unavailable') ||
+      errorMessage.includes('connection')
+    ) {
+      throw new Error(
+        'Database connection failed. Your Supabase account may be paused. Please check your Supabase dashboard and restore your project.'
+      );
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 export interface CreateUserInput {

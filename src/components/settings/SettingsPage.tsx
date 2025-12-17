@@ -74,19 +74,30 @@ export const SettingsPage: React.FC = () => {
     try {
       setResetting(true);
       await resetSupabaseData();
+      
+      // Invalidate all queries to refresh the entire application
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['system_stats'] }),
         queryClient.invalidateQueries({ queryKey: ['app_settings'] }),
         queryClient.invalidateQueries({ queryKey: ['products'] }),
         queryClient.invalidateQueries({ queryKey: ['inventory_stats'] }),
+        queryClient.invalidateQueries({ queryKey: ['stock_batches'] }),
+        queryClient.invalidateQueries({ queryKey: ['stock_movements'] }),
+        queryClient.invalidateQueries({ queryKey: ['sales'] }),
+        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['top_selling_products'] }),
+        queryClient.invalidateQueries({ queryKey: ['stocktake_sessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['audit_logs'] }),
       ]);
+      
+      // Reset form to defaults
       setTaxRate('8');
       setCurrency('NGN');
       setAutoGenerateAlerts(true);
 
       toast({
-        title: 'Demo Data Reset',
-        description: 'All data has been cleared successfully',
+        title: 'All Data Cleared',
+        description: 'All products, sales, stock, and demo data have been cleared successfully. You can now start adding fresh products.',
       });
     } catch (error) {
       console.error(error);
@@ -316,10 +327,11 @@ export const SettingsPage: React.FC = () => {
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Reset All Data</AlertDialogTitle>
+                    <AlertDialogTitle>Clear All Demo Data</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will delete ALL data including users, products, sales, and settings.
-                      Only default users will be recreated. This action cannot be undone.
+                      This will delete ALL products, sales, stock batches, stock movements, alerts, and audit logs.
+                      Your user accounts (admin and cashier) will be preserved. Settings will be reset to defaults.
+                      After clearing, you can start adding fresh products. This action cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -329,7 +341,7 @@ export const SettingsPage: React.FC = () => {
                       disabled={resetting}
                     >
                       {resetting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {resetting ? 'Processing...' : 'Reset Everything'}
+                      {resetting ? 'Clearing...' : 'Clear All Data'}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

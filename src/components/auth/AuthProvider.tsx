@@ -100,17 +100,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         createdAt: new Date().toISOString(),
       });
 
-      await recordAuditLog({
-        userId: authenticatedUser.id,
-        userName: authenticatedUser.fullName,
-        module: 'auth',
-        action: 'login',
-        details: `User ${authenticatedUser.username} logged in`,
-      });
+      try {
+        await recordAuditLog({
+          userId: authenticatedUser.id,
+          userName: authenticatedUser.fullName,
+          module: 'auth',
+          action: 'login',
+          details: `User ${authenticatedUser.username} logged in`,
+        });
+      } catch (auditError) {
+        // Don't fail login if audit log fails
+        console.warn('Failed to record audit log:', auditError);
+      }
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed:', error);
+      // Re-throw connection errors so they can be displayed to the user
+      if (error?.message?.includes('Database connection failed')) {
+        throw error;
+      }
       return false;
     }
   };

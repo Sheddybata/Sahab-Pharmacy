@@ -125,28 +125,40 @@ export async function fetchSystemStats(): Promise<SystemStats> {
   };
 }
 
+// Tables to clear in order (child tables first, then parent tables)
 const TABLES_TO_CLEAR = [
-  'sale_items',
-  'sales',
-  'stock_movements',
-  'stock_batches',
-  'stocktake_items',
-  'stocktake_sessions',
-  'alerts',
-  'audit_logs',
-  'products',
-  'app_settings',
+  'sale_items',        // Child of sales
+  'stock_movements',    // References products, batches, sales
+  'stocktake_items',    // Child of stocktake_sessions
+  'alerts',            // References products and batches
+  'sales',             // Parent table
+  'stock_batches',      // References products
+  'stocktake_sessions', // Parent table
+  'products',          // Parent table
+  'audit_logs',        // Independent
+  'app_settings',      // Independent (will be recreated with defaults)
 ] as const;
 
 export async function resetSupabaseData(): Promise<void> {
+  // Clear tables in order to respect foreign key constraints
   for (const table of TABLES_TO_CLEAR) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .neq('id', null);
+    try {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .neq('id', null);
 
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Failed to clear table ${table}: ${error.message}`);
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 means no rows found, which is fine
+        throw new Error(`Failed to clear table ${table}: ${error.message}`);
+      }
+    } catch (error: any) {
+      // If table doesn't exist or has no rows, continue
+      if (error?.code === 'PGRST116' || error?.message?.includes('relation') || error?.message?.includes('does not exist')) {
+        console.warn(`Table ${table} may not exist or is already empty:`, error.message);
+        continue;
+      }
+      throw error;
     }
   }
 }

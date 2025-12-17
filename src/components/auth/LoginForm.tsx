@@ -30,8 +30,16 @@ export const LoginForm: React.FC = () => {
       } else {
         setError('Invalid username or password');
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      // Check if it's a database connection error
+      if (err?.message?.includes('Database connection failed') || err?.message?.includes('Supabase')) {
+        setError(
+          err.message || 
+          'Database connection failed. Your Supabase account may be paused. Please check your Supabase dashboard and restore your project.'
+        );
+      } else {
+        setError('An error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
