@@ -9,8 +9,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Edit, Package, Search, Loader2, RotateCcw } from 'lucide-react';
+import { Edit, Package, Search, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { useProducts } from '@/hooks/useProducts';
 import { useQuery } from '@tanstack/react-query';
 import { fetchStockBatches, fetchStockMovements } from '@/services/stock';
@@ -18,9 +29,10 @@ import { fetchStockBatches, fetchStockMovements } from '@/services/stock';
 interface InventoryListProps {
   onEdit: (product: Product) => void;
   onReceiveStock: (product: Product) => void;
+  onDelete: (product: Product) => void;
 }
 
-export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveStock }) => {
+export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveStock, onDelete }) => {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -309,6 +321,38 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveS
                             <Button size="sm" variant="outline" onClick={() => onReceiveStock(product)}>
                               <Package className="h-4 w-4" />
                             </Button>
+                          )}
+                          {hasPermission(user.role, 'products.delete') && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="destructive" onClick={(e) => e.stopPropagation()}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Product</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete <strong>{product.name}</strong>? 
+                                    This action cannot be undone. This will permanently delete the product and all associated data.
+                                    {stockStatus.quantity > 0 && (
+                                      <span className="block mt-2 text-destructive font-medium">
+                                        Warning: This product has {stockStatus.quantity} units in stock. Deleting it will remove all stock records.
+                                      </span>
+                                    )}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => onDelete(product)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           )}
                         </TableCell>
                       </TableRow>

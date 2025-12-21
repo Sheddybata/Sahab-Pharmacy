@@ -1,5 +1,5 @@
 // Product Form component with optional initial stock receiving
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Product } from '@/lib/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -8,11 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format } from 'date-fns';
-import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 export type ProductFormValues = {
   id?: string;
@@ -79,14 +74,52 @@ export const ProductForm: React.FC<ProductFormProps> = ({
     active: true,
   });
 
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+
   const [addInitialStock, setAddInitialStock] = useState(false);
   const [initialStock, setInitialStock] = useState({
     batchNumber: '',
-    expiryDate: new Date(),
+    expiryYear: currentYear.toString(),
+    expiryMonth: currentMonth.toString(),
+    expiryDay: currentDay.toString(),
     quantity: '',
     costPrice: '',
     supplier: '',
   });
+
+  // Generate year options (current year to 10 years ahead)
+  const yearOptions = useMemo(() => {
+    const years = [];
+    for (let i = currentYear; i <= currentYear + 10; i++) {
+      years.push(i.toString());
+    }
+    return years;
+  }, [currentYear]);
+
+  // Generate month options
+  const monthOptions = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+  }, []);
+
+  // Generate day options based on selected month and year
+  const dayOptions = useMemo(() => {
+    const year = parseInt(initialStock.expiryYear);
+    const month = parseInt(initialStock.expiryMonth);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
+  }, [initialStock.expiryYear, initialStock.expiryMonth]);
+
+  // Get month name for display
+  const getMonthName = (month: string) => {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return monthNames[parseInt(month) - 1];
+  };
 
   useEffect(() => {
     if (editingProduct) {
@@ -110,14 +143,26 @@ export const ProductForm: React.FC<ProductFormProps> = ({
       });
       setInitialStock({
         batchNumber: '',
-        expiryDate: new Date(),
+        expiryYear: currentYear.toString(),
+        expiryMonth: currentMonth.toString(),
+        expiryDay: currentDay.toString(),
         quantity: '',
         costPrice: '',
         supplier: '',
       });
       setAddInitialStock(false);
     }
-  }, [editingProduct, open]);
+  }, [editingProduct, open, currentYear, currentMonth, currentDay]);
+
+  // Reset day if it's invalid for the selected month/year
+  useEffect(() => {
+    if (addInitialStock) {
+      const maxDay = parseInt(dayOptions[dayOptions.length - 1] || '31');
+      if (parseInt(initialStock.expiryDay) > maxDay) {
+        setInitialStock(prev => ({ ...prev, expiryDay: maxDay.toString() }));
+      }
+    }
+  }, [initialStock.expiryYear, initialStock.expiryMonth, dayOptions, initialStock.expiryDay, addInitialStock]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,12 +190,16 @@ export const ProductForm: React.FC<ProductFormProps> = ({
         return;
       }
 
-      const expiryDate = new Date(initialStock.expiryDate);
+      const expiryDate = new Date(
+        parseInt(initialStock.expiryYear),
+        parseInt(initialStock.expiryMonth) - 1,
+        parseInt(initialStock.expiryDay)
+      );
       expiryDate.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
 
-      if (expiryDate < today) {
+      if (expiryDate < todayDate) {
         alert('Expiry date cannot be in the past');
         return;
       }
@@ -337,50 +386,60 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="expiryDate">Expiry Date *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          'w-full justify-start text-left font-normal',
-                          !initialStock.expiryDate && 'text-muted-foreground'
-                        )}
+                  <Label>Expiry Date *</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Select
+                        value={initialStock.expiryYear}
+                        onValueChange={(value) => setInitialStock({ ...initialStock, expiryYear: value })}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {initialStock.expiryDate ? (
-                          format(initialStock.expiryDate, 'PPP')
-                        ) : (
-                          <span>Pick a date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={initialStock.expiryDate}
-                        onSelect={(date) => {
-                          if (date) {
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            const selectedDate = new Date(date);
-                            selectedDate.setHours(0, 0, 0, 0);
-                            if (selectedDate >= today) {
-                              setInitialStock({ ...initialStock, expiryDate: date });
-                            } else {
-                              alert('Expiry date cannot be in the past');
-                            }
-                          }
-                        }}
-                        disabled={(date) => {
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          return date < today;
-                        }}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {yearOptions.map((year) => (
+                            <SelectItem key={year} value={year}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Select
+                        value={initialStock.expiryMonth}
+                        onValueChange={(value) => setInitialStock({ ...initialStock, expiryMonth: value, expiryDay: '1' })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {monthOptions.map((month) => (
+                            <SelectItem key={month} value={month}>
+                              {getMonthName(month)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Select
+                        value={initialStock.expiryDay}
+                        onValueChange={(value) => setInitialStock({ ...initialStock, expiryDay: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {dayOptions.map((day) => (
+                            <SelectItem key={day} value={day}>
+                              {day}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">

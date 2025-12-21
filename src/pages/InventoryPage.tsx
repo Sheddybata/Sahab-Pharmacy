@@ -11,7 +11,7 @@ import { toast } from '@/components/ui/use-toast';
 import { generateAndSaveAlerts } from '@/lib/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { PRODUCT_QUERY_KEY } from '@/hooks/useProducts';
-import { insertProduct, updateProduct, fetchProductById } from '@/services/products';
+import { insertProduct, updateProduct, fetchProductById, removeProduct } from '@/services/products';
 import { insertStockBatch, insertStockMovement } from '@/services/stock';
 import { recordAuditLog } from '@/services/audit';
 import { Product } from '@/lib/types';
@@ -182,6 +182,37 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
+  const handleDeleteProduct = async (product: Product) => {
+    if (!user) return;
+
+    try {
+      await removeProduct(product.id);
+
+      await recordAuditLog({
+        userId: user.id,
+        userName: user.fullName,
+        module: 'inventory',
+        action: 'delete_product',
+        details: `Deleted product: ${product.name}`,
+        resourceId: product.id,
+        resourceType: 'product',
+      });
+
+      await invalidateInventoryQueries();
+
+      toast({
+        title: 'Product Deleted',
+        description: `Product ${product.name} has been deleted successfully`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: (error as Error).message ?? 'Failed to delete product',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -212,6 +243,7 @@ export const InventoryPage: React.FC = () => {
           setReceivingProduct(product);
           setReceivingFormOpen(true);
         }}
+        onDelete={handleDeleteProduct}
       />
 
       <ProductForm
