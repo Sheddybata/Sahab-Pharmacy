@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Edit, Package, Search, Loader2, RotateCcw, Trash2 } from 'lucide-react';
+import { Edit, Package, Search, Loader2, RotateCcw, Trash2, Download } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   AlertDialog,
@@ -25,6 +25,7 @@ import {
 import { useProducts } from '@/hooks/useProducts';
 import { useQuery } from '@tanstack/react-query';
 import { fetchStockBatches, fetchStockMovements } from '@/services/stock';
+import { toast } from '@/components/ui/use-toast';
 
 interface InventoryListProps {
   onEdit: (product: Product) => void;
@@ -148,6 +149,62 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveS
       });
   }, [products, searchTerm, categoryFilter, stockFilter, sortBy, getStockStatus]);
 
+  const exportProducts = () => {
+    if (!hasPermission(user.role, 'products.view')) {
+      toast({
+        title: 'Permission Denied',
+        description: "You don't have permission to export products",
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Create CSV header
+      let csvContent = 'Product Name,NDC Code,Category,Manufacturer,Dosage Form,Strength,Selling Price,Current Stock,Reorder Point,Reorder Quantity,Location,Barcode,Status\n';
+
+      // Add product rows
+      filteredProducts.forEach((product) => {
+        const stockStatus = getStockStatus(product.id);
+        const stock = stockStatus.quantity;
+        
+        // Escape commas and quotes in CSV values
+        const escapeCSV = (value: any): string => {
+          if (value === null || value === undefined) return '';
+          const str = String(value);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        csvContent += `${escapeCSV(product.name)},${escapeCSV(product.ndcCode || '')},${escapeCSV(product.category)},${escapeCSV(product.manufacturer)},${escapeCSV(product.dosageForm || '')},${escapeCSV(product.strength || '')},${product.sellingPrice},${stock},${product.reorderPoint},${product.reorderQuantity},${escapeCSV(product.location || '')},${escapeCSV(product.barcode || '')},${product.active ? 'Active' : 'Inactive'}\n`;
+      });
+
+      // Create and download the file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `products_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Products Exported',
+        description: `Exported ${filteredProducts.length} products to CSV file`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Export Failed',
+        description: (error as Error).message || 'Failed to export products',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!user) return null;
 
   if (loading) {
@@ -192,8 +249,18 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveS
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Product Inventory</CardTitle>
-        <CardDescription>Manage your product inventory</CardDescription>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <CardTitle>Product Inventory</CardTitle>
+            <CardDescription>Manage your product inventory</CardDescription>
+          </div>
+          {hasPermission(user.role, 'products.view') && (
+            <Button onClick={exportProducts} variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Export Products
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
