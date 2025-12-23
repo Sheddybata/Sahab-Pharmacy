@@ -25,7 +25,7 @@ const mapSupabaseSaleToAppSale = (supabaseSale: any): Sale => {
     total: Number(supabaseSale.total),
     paymentMethod: supabaseSale.payment_method as PaymentMethod,
     cashierId: supabaseSale.cashier_id,
-    cashierName: supabaseSale.cashier_name,
+    cashierName: supabaseSale.cashier_name || 'Unknown',
     customerName: supabaseSale.customer_name || undefined,
     customerPhone: supabaseSale.customer_phone || undefined,
     notes: supabaseSale.notes || undefined,
@@ -57,7 +57,6 @@ const mapAppSaleToSupabaseSale = (appSale: Omit<Sale, 'id' | 'createdAt'>): any 
     total: appSale.total,
     payment_method: appSale.paymentMethod,
     cashier_id: appSale.cashierId,
-    cashier_name: appSale.cashierName,
     customer_name: appSale.customerName ?? null,
     customer_phone: appSale.customerPhone ?? null,
     notes: appSale.notes ?? null,
@@ -153,7 +152,6 @@ export async function updateSale(id: string, saleData: Partial<Omit<Sale, 'id' |
   if (saleData.total !== undefined) updateData.total = saleData.total;
   if (saleData.paymentMethod !== undefined) updateData.payment_method = saleData.paymentMethod;
   if (saleData.cashierId !== undefined) updateData.cashier_id = saleData.cashierId;
-  if (saleData.cashierName !== undefined) updateData.cashier_name = saleData.cashierName;
   if (saleData.customerName !== undefined) updateData.customer_name = saleData.customerName;
   if (saleData.customerPhone !== undefined) updateData.customer_phone = saleData.customerPhone;
   if (saleData.notes !== undefined) updateData.notes = saleData.notes;

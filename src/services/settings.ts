@@ -294,7 +294,7 @@ export async function seedSupabaseDemoData(userId: string, userName: string): Pr
       ? crypto.randomUUID()
       : `sale_item_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const saleSubtotal = firstProduct.product.sellingPrice * 5;
-  const saleTax = saleSubtotal * 0.08;
+  const saleTax = saleSubtotal * 0;
   const saleTotal = saleSubtotal + saleTax;
 
   const sale = await insertSale({

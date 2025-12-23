@@ -159,7 +159,7 @@ export const POSSystem: React.FC = () => {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const tax = subtotal * 0.08; // 8% tax
+  const tax = subtotal * 0; // 0% tax
   const total = subtotal + tax;
 
   const revertDeductions = async (deductions: StockDeduction[]) => {
@@ -322,7 +322,7 @@ export const POSSystem: React.FC = () => {
     }
 
     const saleSubtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
-    const saleTax = saleSubtotal * 0.08;
+    const saleTax = saleSubtotal * 0;
     const saleTotal = saleSubtotal + saleTax;
 
     try {
@@ -576,7 +576,7 @@ export const POSSystem: React.FC = () => {
                     <span>{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span>Tax (8%)</span>
+                    <span>Tax (0%)</span>
                     <span>{formatCurrency(tax)}</span>
                   </div>
                   <Separator />
