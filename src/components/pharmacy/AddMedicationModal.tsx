@@ -16,7 +16,9 @@ interface AddMedicationModalProps {
 const categories: MedicationCategory[] = [
   'Antibiotics', 'Pain Relief', 'Cardiovascular', 'Diabetes', 
   'Respiratory', 'Gastrointestinal', 'Vitamins', 'Dermatology', 
-  'Mental Health', 'Other'
+  'Mental Health', 'Antimalarials', 'Cold chain products', 'Pile disorders',
+  'Antispasmodics', 'Antifungals', 'Antivirals', 'Gout products', 
+  'Supplements', 'Other'
 ];
 
 export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({ 

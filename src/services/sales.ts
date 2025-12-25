@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { Sale, SaleItem, PaymentMethod } from '@/lib/types';
+import { db } from '@/lib/offline-db';
+import { isOnline, queueOperation, syncSalesFromServer } from '@/lib/offline-sync';
 
 const mapSupabaseSaleToAppSale = (supabaseSale: any): Sale => {
   // Parse items from JSONB column
@@ -73,65 +75,141 @@ export async function fetchSales(filters?: {
   endDate?: Date;
   refunded?: boolean;
 }): Promise<Sale[]> {
-  let query = supabase.from('sales').select('*').order('created_at', { ascending: false });
+  if (isOnline()) {
+    try {
+      const sales = await syncSalesFromServer(filters);
+      // Apply local filters if needed
+      let filteredSales = sales;
+      
+      if (filters) {
+        if (filters.startDate) {
+          filteredSales = filteredSales.filter(s => new Date(s.createdAt) >= filters.startDate!);
+        }
+        if (filters.endDate) {
+          filteredSales = filteredSales.filter(s => new Date(s.createdAt) <= filters.endDate!);
+        }
+        if (filters.refunded !== undefined) {
+          filteredSales = filteredSales.filter(s => s.refunded === filters.refunded);
+        }
+      }
+      
+      return filteredSales;
+    } catch (error) {
+      console.error('Failed to fetch from server, using local cache:', error);
+      // Fall through to offline mode
+    }
+  }
 
+  // Use offline database
+  let salesQuery = db.sales.orderBy('createdAt').reverse();
+  
+  if (filters) {
+    if (filters.refunded !== undefined) {
+      salesQuery = salesQuery.filter(s => s.refunded === filters.refunded);
+    }
+  }
+  
+  const sales = await salesQuery.toArray();
+  
+  // Apply date filters
+  let filteredSales = sales;
   if (filters) {
     if (filters.startDate) {
-      query = query.gte('created_at', filters.startDate.toISOString());
+      filteredSales = filteredSales.filter(s => new Date(s.createdAt) >= filters.startDate!);
     }
     if (filters.endDate) {
-      query = query.lte('created_at', filters.endDate.toISOString());
-    }
-    if (filters.refunded !== undefined) {
-      query = query.eq('refunded', filters.refunded);
+      filteredSales = filteredSales.filter(s => new Date(s.createdAt) <= filters.endDate!);
     }
   }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Error fetching sales:', error);
-    throw error;
-  }
-
-  return (data ?? []).map(mapSupabaseSaleToAppSale);
+  
+  return filteredSales;
 }
 
 export async function fetchSaleById(id: string): Promise<Sale | null> {
-  const { data, error } = await supabase
-    .from('sales')
-    .select('*')
-    .eq('id', id)
-    .single();
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-  if (error && error.code !== 'PGRST116') {
-    // PGRST116 means no rows found
-    console.error(`Error fetching sale with ID ${id}:`, error);
-    throw error;
+      if (!error && data) {
+        const sale = mapSupabaseSaleToAppSale(data);
+        // Cache it
+        await db.sales.put({ ...sale, synced: true });
+        return sale;
+      }
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error(`Error fetching sale with ID ${id}:`, error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Failed to fetch from server, using local cache:', error);
+    }
   }
 
-  return data ? mapSupabaseSaleToAppSale(data) : null;
+  // Use offline database
+  const sale = await db.sales.get(id);
+  return sale || null;
 }
 
 export async function insertSale(saleData: Omit<Sale, 'id' | 'createdAt'>): Promise<Sale> {
-  const { data, error } = await supabase
-    .from('sales')
-    .insert({
-      ...mapAppSaleToSupabaseSale(saleData),
-      created_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const now = new Date().toISOString();
+  const tempId = `temp-sale-${Date.now()}-${Math.random()}`;
+  
+  const sale: Sale = {
+    id: tempId,
+    ...saleData,
+    createdAt: now,
+  };
 
-  if (error) {
-    console.error('Error inserting sale:', error);
-    throw error;
+  // Add to local database immediately
+  await db.sales.add({ ...sale, synced: false });
+
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .insert({
+          ...mapAppSaleToSupabaseSale(saleData),
+          created_at: now,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        const syncedSale = mapSupabaseSaleToAppSale(data);
+        // Update local database with server ID
+        await db.sales.delete(tempId);
+        await db.sales.add({ ...syncedSale, synced: true });
+        return syncedSale;
+      }
+    } catch (error) {
+      console.error('Failed to insert on server, queuing for sync:', error);
+    }
   }
 
-  return mapSupabaseSaleToAppSale(data);
+  // Queue for sync
+  await queueOperation('create', 'sales', {
+    ...mapAppSaleToSupabaseSale(saleData),
+    created_at: now,
+  });
+  
+  return sale;
 }
 
 export async function updateSale(id: string, saleData: Partial<Omit<Sale, 'id' | 'createdAt'>>): Promise<Sale> {
+  // Update local database immediately
+  const existing = await db.sales.get(id);
+  if (existing) {
+    await db.sales.update(id, {
+      ...saleData,
+      synced: false,
+    });
+  }
+
   const updateData: any = {};
 
   if (saleData.items) {
@@ -159,18 +237,28 @@ export async function updateSale(id: string, saleData: Partial<Omit<Sale, 'id' |
   if (saleData.refundedAt !== undefined) updateData.refunded_at = saleData.refundedAt;
   if (saleData.refundedBy !== undefined) updateData.refunded_by = saleData.refundedBy;
 
-  const { data, error } = await supabase
-    .from('sales')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
 
-  if (error) {
-    console.error(`Error updating sale with ID ${id}:`, error);
-    throw error;
+      if (!error && data) {
+        const syncedSale = mapSupabaseSaleToAppSale(data);
+        await db.sales.update(id, { ...syncedSale, synced: true });
+        return syncedSale;
+      }
+    } catch (error) {
+      console.error('Failed to update on server, queuing for sync:', error);
+    }
   }
 
-  return mapSupabaseSaleToAppSale(data);
+  // Queue for sync
+  await queueOperation('update', 'sales', { id, ...updateData });
+  const updated = await db.sales.get(id);
+  return updated || { ...existing!, ...saleData };
 }
 

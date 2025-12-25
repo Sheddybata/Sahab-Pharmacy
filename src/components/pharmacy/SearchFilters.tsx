@@ -52,6 +52,15 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
           <SelectItem value="Vitamins">Vitamins</SelectItem>
           <SelectItem value="Dermatology">Dermatology</SelectItem>
           <SelectItem value="Mental Health">Mental Health</SelectItem>
+          <SelectItem value="Antimalarials">Antimalarials</SelectItem>
+          <SelectItem value="Cold chain products">Cold chain products</SelectItem>
+          <SelectItem value="Pile disorders">Pile disorders</SelectItem>
+          <SelectItem value="Antispasmodics">Antispasmodics</SelectItem>
+          <SelectItem value="Antifungals">Antifungals</SelectItem>
+          <SelectItem value="Antivirals">Antivirals</SelectItem>
+          <SelectItem value="Gout products">Gout products</SelectItem>
+          <SelectItem value="Supplements">Supplements</SelectItem>
+          <SelectItem value="Other">Other</SelectItem>
         </SelectContent>
       </Select>
 

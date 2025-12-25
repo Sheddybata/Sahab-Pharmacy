@@ -17,6 +17,7 @@ import { UsersPage } from "@/pages/UsersPage";
 import { AuditPage } from "@/pages/AuditPage";
 import { AlertsPage } from "@/pages/AlertsPage";
 import { SettingsPageWrapper } from "@/pages/SettingsPage";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
   <ThemeProvider defaultTheme="light">
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <OfflineIndicator />
         <Toaster />
         <Sonner />
         <BrowserRouter>

@@ -49,6 +49,14 @@ const categories = [
   'Vitamins',
   'Dermatology',
   'Mental Health',
+  'Antimalarials',
+  'Cold chain products',
+  'Pile disorders',
+  'Antispasmodics',
+  'Antifungals',
+  'Antivirals',
+  'Gout products',
+  'Supplements',
   'Other',
 ];
 
