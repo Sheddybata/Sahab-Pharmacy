@@ -1,7 +1,7 @@
 import { fetchStockBatches, updateStockBatch } from '@/services/stock';
 import { StockBatch } from './types';
 
-const FIXED_BATCHES_KEY = 'inventory_cost_price_fixed_v2'; // Changed version to allow re-running
+const FIXED_BATCHES_KEY = 'inventory_cost_price_fixed_v3'; // Changed version to allow re-running with improved logic
 
 /**
  * Check if batches have already been fixed (one-time fix)
@@ -72,13 +72,10 @@ export async function autoFixCostPriceData(): Promise<{
       try {
         const newCostPrice = batch.costPrice / batch.remainingQuantity;
         
-        // Only fix if the new cost price is reasonable (between 1 and 100,000 per unit)
-        if (newCostPrice >= 1 && newCostPrice <= 100000) {
-          await updateStockBatch(batch.id, { costPrice: newCostPrice });
-          result.fixed++;
-        } else {
-          result.skipped++;
-        }
+        // Fix all batches that passed the filter (already validated that per-unit is reasonable)
+        // The filter already ensures newCostPrice is between 0.01 and 100,000
+        await updateStockBatch(batch.id, { costPrice: newCostPrice });
+        result.fixed++;
       } catch (error) {
         result.errors.push(`Batch ${batch.batchNumber}: ${(error as Error).message}`);
       }
