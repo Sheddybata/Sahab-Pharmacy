@@ -107,16 +107,22 @@ export async function getProblematicBatches(): Promise<Array<{
     
     // Flag batches with values over 1 million
     if (currentValue > 1000000) {
+      // Calculate what per-unit would be if cost_price is total pack cost
+      const calculatedPerUnit = batch.costPrice / batch.remainingQuantity;
+      
+      // Suggest fix if calculated per-unit seems reasonable (between 0.01 and 100,000)
+      const suggestedFix = (calculatedPerUnit >= 0.01 && calculatedPerUnit <= 100000) ? {
+        field: 'costPrice' as const,
+        oldValue: batch.costPrice,
+        newValue: calculatedPerUnit,
+        reason: `cost_price (${batch.costPrice.toLocaleString()}) appears to be total pack cost. Dividing by quantity (${batch.remainingQuantity}) gives per-unit cost of ${calculatedPerUnit.toLocaleString()} NGN.`,
+      } : undefined;
+      
       problematic.push({
         batch,
         currentValue,
-        issue: `Batch value is ${currentValue.toLocaleString()} NGN - unusually high`,
-        suggestedFix: batch.costPrice > 10000 ? {
-          field: 'costPrice',
-          oldValue: batch.costPrice,
-          newValue: batch.costPrice / batch.remainingQuantity, // Assuming cost_price is total value
-          reason: 'cost_price appears to be stored as total value instead of per-unit price. If this is incorrect, divide by quantity to get per-unit price.',
-        } : undefined,
+        issue: `Batch value is ${currentValue.toLocaleString()} NGN - cost_price may be stored as total pack cost instead of per-unit price`,
+        suggestedFix,
       });
     }
   });
