@@ -24,9 +24,11 @@ export interface StockMovementInsert {
 }
 
 export async function fetchStockBatches(): Promise<StockBatch[]> {
+  // Only fetch batches with remaining quantity > 0 for inventory calculations
   const { data, error } = await supabase
     .from('stock_batches')
     .select('*')
+    .gt('remaining_quantity', 0) // Only get batches with stock remaining
     .order('expiry_date', { ascending: true });
 
   if (error) {
