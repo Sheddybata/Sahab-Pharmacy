@@ -61,6 +61,75 @@ export const InventoryDiagnostics: React.FC = () => {
     }
   };
 
+  const handleFixAll = async () => {
+    if (!problematicBatches) return;
+    
+    const batchesToFix = problematicBatches.filter(item => item.suggestedFix);
+    const count = batchesToFix.length;
+    
+    if (count === 0) {
+      toast({
+        title: 'No Batches to Fix',
+        description: 'No batches have suggested fixes available',
+      });
+      return;
+    }
+
+    if (!confirm(
+      `Are you sure you want to fix ${count} batches at once?\n\n` +
+      `This will update the cost_price for all ${count} batches by dividing the current cost_price by quantity to get per-unit price.\n\n` +
+      `This action cannot be undone. Continue?`
+    )) {
+      return;
+    }
+
+    setFixing(true);
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    try {
+      // Fix all batches in parallel
+      await Promise.all(
+        batchesToFix.map(async (item) => {
+          try {
+            await updateStockBatch(item.batch.id, { costPrice: item.suggestedFix!.newValue });
+            successCount++;
+          } catch (error) {
+            failCount++;
+            errors.push(`${item.batch.batchNumber}: ${(error as Error).message}`);
+          }
+        })
+      );
+
+      if (successCount > 0) {
+        toast({
+          title: 'Batches Fixed',
+          description: `Successfully fixed ${successCount} batch${successCount > 1 ? 'es' : ''}. ${failCount > 0 ? `${failCount} failed.` : ''}`,
+        });
+      }
+
+      if (failCount > 0) {
+        toast({
+          title: 'Some Fixes Failed',
+          description: `Failed to fix ${failCount} batch${failCount > 1 ? 'es' : ''}. Check console for details.`,
+          variant: 'destructive',
+        });
+      }
+
+      // Refresh diagnostics
+      await runDiagnostics();
+    } catch (error) {
+      toast({
+        title: 'Fix All Failed',
+        description: (error as Error).message,
+        variant: 'destructive',
+      });
+    } finally {
+      setFixing(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -221,6 +290,31 @@ export const InventoryDiagnostics: React.FC = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {problematicBatches.filter(item => item.suggestedFix).length > 0 && (
+                    <div className="mb-4">
+                      <Button
+                        onClick={handleFixAll}
+                        disabled={fixing}
+                        className="w-full sm:w-auto"
+                        variant="default"
+                      >
+                        {fixing ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Fixing All...
+                          </>
+                        ) : (
+                          <>
+                            <Wrench className="mr-2 h-4 w-4" />
+                            Fix All {problematicBatches.filter(item => item.suggestedFix).length} Batches
+                          </>
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        This will fix all batches with suggested fixes by dividing cost_price by quantity
+                      </p>
+                    </div>
+                  )}
                   <Table>
                     <TableHeader>
                       <TableRow>
