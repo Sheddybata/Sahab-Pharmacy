@@ -3,9 +3,16 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { initializeOfflineSync } from './lib/offline-sync';
+import { autoFixCostPriceData } from './lib/fix-cost-price-data';
 
 // Initialize offline sync
 initializeOfflineSync();
+
+// Auto-fix cost price data issue (one-time fix on app startup)
+// This fixes batches where cost_price is stored as total pack cost instead of per-unit cost
+autoFixCostPriceData().catch(() => {
+  // Silently fail - don't block app startup if fix fails
+});
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
