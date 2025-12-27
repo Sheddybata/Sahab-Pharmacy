@@ -276,8 +276,17 @@ export const calculateInventoryStatsAsync = async (): Promise<{
     movementsByProduct.set(movement.productId, current + movement.quantity);
   });
 
-  const batchesByProduct = new Map<string, StockBatch[]>();
+  // Deduplicate batches by ID to prevent counting same batch multiple times
+  const uniqueBatchesMap = new Map<string, StockBatch>();
   stockBatches.forEach((batch) => {
+    if (!uniqueBatchesMap.has(batch.id)) {
+      uniqueBatchesMap.set(batch.id, batch);
+    }
+  });
+  const uniqueBatches = Array.from(uniqueBatchesMap.values());
+
+  const batchesByProduct = new Map<string, StockBatch[]>();
+  uniqueBatches.forEach((batch) => {
     const list = batchesByProduct.get(batch.productId) ?? [];
     list.push(batch);
     batchesByProduct.set(batch.productId, list);
