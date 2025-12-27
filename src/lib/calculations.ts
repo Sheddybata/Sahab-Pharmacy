@@ -294,10 +294,10 @@ export const calculateInventoryStatsAsync = async (): Promise<{
     }
 
     if (batches.length > 0) {
+      // Calculate total value directly from batches' remaining quantity and cost price
+      // This is the actual inventory value based on what's physically in stock
       const totalCost = batches.reduce((sum, batch) => sum + batch.remainingQuantity * batch.costPrice, 0);
-      const totalQty = batches.reduce((sum, batch) => sum + batch.remainingQuantity, 0);
-      const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
-      totalValue += quantity * avgCost;
+      totalValue += totalCost;
     }
 
     batches.forEach((batch) => {
