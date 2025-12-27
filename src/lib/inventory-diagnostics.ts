@@ -146,13 +146,33 @@ export async function diagnoseInventoryData(): Promise<DiagnosticResult> {
     );
   }
 
-  // Check for unusually high values
-  const topValues = result.sampleData.slice(0, 10);
-  const hasUnusualValues = topValues.some((item) => item.batchValue > 1000000); // Over 1 million
-  if (hasUnusualValues) {
+  // Check for unusually high values and analyze them
+  const topValues = result.sampleData.slice(0, 20);
+  const unusualBatches = topValues.filter((item) => item.batchValue > 1000000);
+  if (unusualBatches.length > 0) {
     result.potentialIssues.push(
-      'Found batches with unusually high values (>1M) - check if cost_price or remaining_quantity are stored correctly'
+      `Found ${unusualBatches.length} batches with unusually high values (>1M NGN) - likely data entry error`
     );
+    
+    // Analyze if cost_price seems too high (maybe it's stored as total value instead of per-unit)
+    const batchesWithHighCostPrice = unusualBatches.filter(
+      (item) => item.costPrice > 10000 // Cost price over 10,000 NGN per unit seems unusual
+    );
+    if (batchesWithHighCostPrice.length > 0) {
+      result.potentialIssues.push(
+        `${batchesWithHighCostPrice.length} of these have cost_price > 10,000 - cost_price may be stored as total value instead of per-unit price`
+      );
+    }
+    
+    // Analyze if quantity seems too high
+    const batchesWithHighQuantity = unusualBatches.filter(
+      (item) => item.remainingQuantity > 10000 // Quantity over 10,000 seems unusual for pharmacy items
+    );
+    if (batchesWithHighQuantity.length > 0) {
+      result.potentialIssues.push(
+        `${batchesWithHighQuantity.length} of these have remaining_quantity > 10,000 - quantity may be incorrect`
+      );
+    }
   }
 
   return result;

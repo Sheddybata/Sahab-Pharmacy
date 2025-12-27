@@ -3,23 +3,61 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle2, Wrench } from 'lucide-react';
 import { diagnoseInventoryData, DiagnosticResult } from '@/lib/inventory-diagnostics';
 import { formatCurrency } from '@/lib/utils';
+import { getProblematicBatches } from '@/lib/fix-inventory-data';
+import { updateStockBatch } from '@/services/stock';
+import { toast } from '@/components/ui/use-toast';
 
 export const InventoryDiagnostics: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DiagnosticResult | null>(null);
+  const [problematicBatches, setProblematicBatches] = useState<Awaited<ReturnType<typeof getProblematicBatches>> | null>(null);
+  const [fixing, setFixing] = useState(false);
 
   const runDiagnostics = async () => {
     setLoading(true);
     try {
-      const diagnosticResult = await diagnoseInventoryData();
+      const [diagnosticResult, problematic] = await Promise.all([
+        diagnoseInventoryData(),
+        getProblematicBatches(),
+      ]);
       setResult(diagnosticResult);
+      setProblematicBatches(problematic);
     } catch (error) {
-      console.error('Diagnostic failed:', error);
+      toast({
+        title: 'Diagnostic Failed',
+        description: (error as Error).message,
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFixCostPrice = async (batchId: string, newCostPrice: number) => {
+    if (!confirm('Are you sure you want to fix this batch? This will update the cost_price in the database.')) {
+      return;
+    }
+
+    setFixing(true);
+    try {
+      await updateStockBatch(batchId, { costPrice: newCostPrice });
+      toast({
+        title: 'Batch Fixed',
+        description: 'Cost price has been updated successfully',
+      });
+      // Refresh diagnostics
+      await runDiagnostics();
+    } catch (error) {
+      toast({
+        title: 'Fix Failed',
+        description: (error as Error).message,
+        variant: 'destructive',
+      });
+    } finally {
+      setFixing(false);
     }
   };
 
@@ -166,6 +204,82 @@ export const InventoryDiagnostics: React.FC = () => {
                       ))}
                     </TableBody>
                   </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Problematic Batches with Fix Option */}
+            {problematicBatches && problematicBatches.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg text-orange-600 flex items-center gap-2">
+                    <Wrench className="h-5 w-5" />
+                    Problematic Batches ({problematicBatches.length})
+                  </CardTitle>
+                  <CardDescription>
+                    Batches with unusually high values - likely have cost_price stored as total value instead of per-unit price
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Batch Number</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Current Cost/Unit</TableHead>
+                        <TableHead className="text-right">Current Value</TableHead>
+                        <TableHead className="text-right">Suggested Cost/Unit</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {problematicBatches.slice(0, 30).map((item) => (
+                        <TableRow key={item.batch.id}>
+                          <TableCell className="font-mono text-xs">{item.batch.batchNumber}</TableCell>
+                          <TableCell className="text-right">{item.batch.remainingQuantity.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(item.batch.costPrice)}</TableCell>
+                          <TableCell className="text-right font-bold text-red-600">
+                            {formatCurrency(item.currentValue)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.suggestedFix ? (
+                              <span className="text-green-600 font-medium">
+                                {formatCurrency(item.suggestedFix.newValue)}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.suggestedFix && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleFixCostPrice(item.batch.id, item.suggestedFix!.newValue)}
+                                disabled={fixing}
+                              >
+                                Fix
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {problematicBatches.length > 30 && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      ...and {problematicBatches.length - 30} more problematic batches
+                    </p>
+                  )}
+                  <Alert className="mt-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Important</AlertTitle>
+                    <AlertDescription>
+                      Only use "Fix" if you're sure the cost_price is stored as total value. 
+                      The suggested fix divides cost_price by quantity to get per-unit price.
+                      Review each batch carefully before fixing.
+                    </AlertDescription>
+                  </Alert>
                 </CardContent>
               </Card>
             )}
