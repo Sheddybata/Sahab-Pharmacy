@@ -1,7 +1,7 @@
 import { fetchStockBatches, updateStockBatch } from '@/services/stock';
 import { StockBatch } from './types';
 
-const FIXED_BATCHES_KEY = 'inventory_cost_price_fixed_v3'; // Changed version to allow re-running with improved logic
+const FIXED_BATCHES_KEY = 'inventory_cost_price_fixed_v4'; // Changed version to allow re-running with comprehensive fix
 
 /**
  * Check if batches have already been fixed (one-time fix)
@@ -44,22 +44,25 @@ export async function autoFixCostPriceData(): Promise<{
   try {
     const allBatches = await fetchStockBatches();
     
-    // Find batches that likely have cost_price stored as total value
-    // Criteria: (cost_price * quantity) > 1,000,000 AND the calculated per-unit price seems reasonable
+    // Find ALL batches that likely have cost_price stored as total pack cost instead of per-unit
+    // We fix batches where:
+    // 1. cost_price > 100 (suspiciously high for a single unit in pharmacy inventory)
+    // 2. AND dividing cost_price by quantity gives a reasonable per-unit price (0.01 to 100,000)
+    // 3. This catches cases where cost_price was entered as pack cost
     const batchesToFix = allBatches.filter((batch) => {
       if (batch.remainingQuantity <= 0) return false;
+      if (batch.costPrice <= 100) return false; // Skip very low cost prices (likely already per-unit)
       
-      const currentValue = batch.remainingQuantity * batch.costPrice;
+      // Calculate what per-unit price would be if cost_price is total pack cost
+      const calculatedPerUnit = batch.costPrice / batch.remainingQuantity;
       
-      // If the calculated value is over 1 million, check if it's likely wrong
-      if (currentValue > 1000000) {
-        // Calculate what per-unit price would be if cost_price is total pack cost
-        const calculatedPerUnit = batch.costPrice / batch.remainingQuantity;
-        
-        // If the calculated per-unit is reasonable (between 0.01 and 100,000),
-        // then cost_price is likely stored as total pack cost
-        // This catches cases like: 2000 units × 3500 = 7M (should be 3500/2000 = 1.75 per unit)
-        if (calculatedPerUnit >= 0.01 && calculatedPerUnit <= 100000) {
+      // If the calculated per-unit is reasonable (between 0.01 and 100,000 NGN per unit),
+      // and the current cost_price seems too high for a single unit (> 100),
+      // then cost_price is likely stored as total pack cost and should be fixed
+      if (calculatedPerUnit >= 0.01 && calculatedPerUnit <= 100000) {
+        // Fix if cost_price > 100 (seems high for per-unit) OR batch value > 100,000 (unusually high)
+        const batchValue = batch.remainingQuantity * batch.costPrice;
+        if (batch.costPrice > 100 || batchValue > 100000) {
           return true;
         }
       }
