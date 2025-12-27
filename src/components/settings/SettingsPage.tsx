@@ -31,6 +31,7 @@ import {
   seedSupabaseDemoData,
 } from '@/services/settings';
 import { recordAuditLog } from '@/services/audit';
+import { InventoryDiagnostics } from '@/components/diagnostics/InventoryDiagnostics';
 
 export const SettingsPage: React.FC = () => {
   const { user } = useAuth();
@@ -349,6 +350,11 @@ export const SettingsPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Inventory Diagnostics */}
+      {hasPermission(user.role, 'settings.view') && (
+        <InventoryDiagnostics />
       )}
 
       {/* System Information */}
