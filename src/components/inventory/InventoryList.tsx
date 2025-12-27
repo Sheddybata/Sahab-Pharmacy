@@ -205,6 +205,74 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveS
     }
   };
 
+  const exportBatches = () => {
+    if (!hasPermission(user.role, 'products.view')) {
+      toast({
+        title: 'Permission Denied',
+        description: "You don't have permission to export batches",
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Escape commas and quotes in CSV values
+      const escapeCSV = (value: any): string => {
+        if (value === null || value === undefined) return '';
+        const str = String(value);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const filteredProductIds = new Set(filteredProducts.map((p) => p.id));
+      const batchesToExport = stockBatches
+        .filter((b) => b.remainingQuantity > 0 && filteredProductIds.has(b.productId))
+        .sort((a, b) => {
+          const byProduct = a.productId.localeCompare(b.productId);
+          if (byProduct !== 0) return byProduct;
+          return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
+        });
+
+      // Create CSV header (one row per batch)
+      let csvContent =
+        'Product Name,Category,Manufacturer,Batch Number,Expiry Date,Remaining Quantity,Selling Price\n';
+
+      batchesToExport.forEach((batch) => {
+        const product = products.find((p) => p.id === batch.productId);
+        if (!product) return;
+
+        csvContent += `${escapeCSV(product.name)},${escapeCSV(product.category)},${escapeCSV(
+          product.manufacturer
+        )},${escapeCSV(batch.batchNumber)},${escapeCSV(batch.expiryDate)},${batch.remainingQuantity},${
+          product.sellingPrice
+        }\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `batches_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Batches Exported',
+        description: `Exported ${batchesToExport.length} batch${batchesToExport.length === 1 ? '' : 'es'} to CSV file`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Export Failed',
+        description: (error as Error).message || 'Failed to export batches',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!user) return null;
 
   if (loading) {
@@ -255,10 +323,16 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onEdit, onReceiveS
             <CardDescription>Manage your product inventory</CardDescription>
           </div>
           {hasPermission(user.role, 'products.view') && (
-            <Button onClick={exportProducts} variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" />
-              Export Products
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={exportProducts} variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                Export Products
+              </Button>
+              <Button onClick={exportBatches} variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                Export Batches
+              </Button>
+            </div>
           )}
         </div>
       </CardHeader>
