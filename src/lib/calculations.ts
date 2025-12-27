@@ -304,15 +304,14 @@ export const calculateInventoryStatsAsync = async (): Promise<{
 
     if (batches.length > 0) {
       // Calculate total value directly from batches' remaining quantity and cost price
-      // Only count valid, non-expired batches in inventory value
+      // Include ALL batches with stock, regardless of expiry status
       const validBatches = batches.filter((batch) => {
         // Must have positive remaining quantity
         if (batch.remainingQuantity <= 0) return false;
         // Must have valid cost price
         if (!batch.costPrice || batch.costPrice <= 0) return false;
-        // Exclude expired batches (expired inventory has no value)
-        const daysUntilExpiry = getDaysUntilExpiry(batch.expiryDate);
-        return daysUntilExpiry >= 0;
+        // Include all batches with stock (including expired) for inventory value
+        return true;
       });
       
       const totalCost = validBatches.reduce((sum, batch) => {
