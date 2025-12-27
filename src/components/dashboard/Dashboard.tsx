@@ -43,6 +43,7 @@ export const Dashboard: React.FC = () => {
   const stats = statsData ?? {
     totalProducts: 0,
     totalValue: 0,
+    totalCostValue: 0,
     lowStockCount: 0,
     expiringCount: 0,
     expiredCount: 0,
@@ -91,7 +92,7 @@ export const Dashboard: React.FC = () => {
           title="Inventory Value"
           value={statsLoading ? '...' : formatCurrency(stats.totalValue)}
           icon={DollarSign}
-          description="Total cost value"
+          description="Total retail value (matches Inventory export)"
           className="bg-gradient-to-br from-[#d9f2fb] to-[#bde6f7] dark:from-[#0b2535] dark:to-[#123a52]"
         />
       </div>

@@ -246,6 +246,7 @@ export const getTopSellingProductsAsync = async (limit: number = 10): Promise<Ar
 export const calculateInventoryStatsAsync = async (): Promise<{
   totalProducts: number;
   totalValue: number;
+  totalCostValue: number;
   lowStockCount: number;
   expiringCount: number;
   expiredCount: number;
@@ -265,7 +266,10 @@ export const calculateInventoryStatsAsync = async (): Promise<{
   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
   const totalProducts = products.length;
+  // totalValue should match Inventory List export: current stock (from movements) × selling price (retail value)
   let totalValue = 0;
+  // totalCostValue is kept for reference: batch remainingQuantity × costPrice (cost valuation)
+  let totalCostValue = 0;
   let lowStockCount = 0;
   let expiringCount = 0;
   let expiredCount = 0;
@@ -298,6 +302,12 @@ export const calculateInventoryStatsAsync = async (): Promise<{
       .filter((batch) => batch.remainingQuantity > 0)
       .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
 
+    // Retail value (matches InventoryList export calculation)
+    const retailValue = quantity * product.sellingPrice;
+    if (isFinite(retailValue) && retailValue >= 0) {
+      totalValue += retailValue;
+    }
+
     if (quantity <= product.reorderPoint) {
       lowStockCount++;
     }
@@ -323,7 +333,7 @@ export const calculateInventoryStatsAsync = async (): Promise<{
       
       // Only add if the value is valid
       if (isFinite(totalCost) && totalCost >= 0) {
-        totalValue += totalCost;
+        totalCostValue += totalCost;
       }
     }
 
@@ -345,6 +355,7 @@ export const calculateInventoryStatsAsync = async (): Promise<{
   return {
     totalProducts,
     totalValue,
+    totalCostValue,
     lowStockCount,
     expiringCount,
     expiredCount,

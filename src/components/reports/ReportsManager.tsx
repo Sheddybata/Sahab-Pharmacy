@@ -92,20 +92,27 @@ export const ReportsManager: React.FC = () => {
     const productsWithStock = await Promise.all(
       activeProducts.map(async (product) => {
         const stock = await calculateCurrentStockAsync(product.id);
+
+        const costValue = (stock.batches ?? [])
+          .filter((batch) => batch.remainingQuantity > 0 && batch.costPrice > 0)
+          .reduce((sum, batch) => sum + batch.remainingQuantity * batch.costPrice, 0);
+
+        const retailValue = stock.quantity * product.sellingPrice;
         return {
           ...product,
           currentStock: stock.quantity,
+          costValue,
+          retailValue,
         };
       })
     );
 
-    const totalValue = productsWithStock.reduce(
-      (sum, product) => sum + product.currentStock * product.sellingPrice,
-      0
-    );
+    const totalCostValue = productsWithStock.reduce((sum, product) => sum + product.costValue, 0);
+    const totalRetailValue = productsWithStock.reduce((sum, product) => sum + product.retailValue, 0);
 
     return {
-      totalValue,
+      totalCostValue,
+      totalRetailValue,
       products: productsWithStock,
     };
   };
@@ -158,10 +165,9 @@ export const ReportsManager: React.FC = () => {
           queryKey: inventoryQueryKey,
           queryFn: inventoryQueryFn,
         });
-        csvContent = 'Product Name,Category,Current Stock,Reorder Point,Value\n';
+        csvContent = 'Product Name,Category,Current Stock,Reorder Point,Cost Value,Retail Value\n';
         inventory.products.forEach((product) => {
-          const value = product.currentStock * product.sellingPrice;
-          csvContent += `${product.name},${product.category},${product.currentStock},${product.reorderPoint},${value.toFixed(2)}\n`;
+          csvContent += `${product.name},${product.category},${product.currentStock},${product.reorderPoint},${product.costValue.toFixed(2)},${product.retailValue.toFixed(2)}\n`;
         });
       }
 
@@ -407,11 +413,18 @@ export const ReportsManager: React.FC = () => {
             <CardTitle>Inventory Valuation</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold mb-4">
-              {formatCurrency(inventory.totalValue)}
+            <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+              <div>
+                <div className="text-sm text-muted-foreground">Total inventory value (matches Inventory export)</div>
+                <div className="text-3xl font-bold">{formatCurrency(inventory.totalRetailValue)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Cost valuation (for reference)</div>
+                <div className="text-3xl font-bold">{formatCurrency(inventory.totalCostValue)}</div>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Total inventory value across {inventory.products.length} products
+            <p className="text-sm text-muted-foreground mt-3">
+              Across {inventory.products.length} products
             </p>
           </CardContent>
         </Card>
