@@ -154,32 +154,8 @@ export async function fetchStockMovementsByProduct(productId: string): Promise<S
   }));
 }
 
-/**
- * Normalize cost_price to ensure it's stored as per-unit price, not pack cost
- * If cost_price seems too high (> 100) and dividing by quantity gives a reasonable per-unit,
- * then it's likely pack cost and should be converted to per-unit
- */
-function normalizeCostPrice(costPrice: number, quantity: number): number {
-  // If cost_price > 100 and quantity > 1, check if it might be pack cost
-  if (costPrice > 100 && quantity > 1) {
-    const calculatedPerUnit = costPrice / quantity;
-    // If calculated per-unit is reasonable (0.01 to 100,000), treat cost_price as pack cost
-    if (calculatedPerUnit >= 0.01 && calculatedPerUnit <= 100000) {
-      // Check if the batch value would be unusually high
-      const batchValue = costPrice * quantity;
-      if (batchValue > 100000) {
-        // Cost price appears to be pack cost, convert to per-unit
-        return calculatedPerUnit;
-      }
-    }
-  }
-  // Otherwise, assume it's already per-unit
-  return costPrice;
-}
-
 export async function insertStockBatch(payload: StockBatchInsert): Promise<StockBatch> {
-  // Normalize cost_price to ensure it's per-unit, not pack cost
-  const normalizedCostPrice = normalizeCostPrice(payload.costPrice, payload.remainingQuantity);
+  // Don't normalize - trust user input. Only auto-fix existing problematic data, not new entries.
   
   const { data, error } = await supabase
     .from('stock_batches')
@@ -187,7 +163,7 @@ export async function insertStockBatch(payload: StockBatchInsert): Promise<Stock
       product_id: payload.productId,
       batch_number: payload.batchNumber,
       expiry_date: payload.expiryDate,
-      cost_price: normalizedCostPrice,
+      cost_price: payload.costPrice,
       supplier: payload.supplier ?? null,
       received_date: payload.receivedDate ?? new Date().toISOString(),
       remaining_quantity: payload.remainingQuantity,
@@ -259,20 +235,7 @@ export async function updateStockBatch(id: string, batchData: Partial<StockBatch
   if (batchData.supplier !== undefined) updateData.supplier = batchData.supplier ?? null;
   if (batchData.receivedDate !== undefined) updateData.received_date = batchData.receivedDate;
   if (batchData.remainingQuantity !== undefined) updateData.remaining_quantity = batchData.remainingQuantity;
-  
-  // Normalize cost_price if being updated
-  if (batchData.costPrice !== undefined) {
-    const quantity = batchData.remainingQuantity ?? 0;
-    // Fetch current batch to get quantity if not provided
-    let currentQuantity = quantity;
-    if (quantity === 0) {
-      const currentBatch = await fetchStockBatchById(id);
-      if (currentBatch) {
-        currentQuantity = currentBatch.remainingQuantity;
-      }
-    }
-    updateData.cost_price = normalizeCostPrice(batchData.costPrice, currentQuantity);
-  }
+  if (batchData.costPrice !== undefined) updateData.cost_price = batchData.costPrice;
 
   const { data, error } = await supabase
     .from('stock_batches')

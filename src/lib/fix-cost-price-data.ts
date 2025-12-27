@@ -1,7 +1,10 @@
 import { fetchStockBatches, updateStockBatch } from '@/services/stock';
 import { StockBatch } from './types';
+import { supabase } from './supabaseClient';
 
-const FIXED_BATCHES_KEY = 'inventory_cost_price_fixed_v4'; // Changed version to allow re-running with comprehensive fix
+const FIXED_BATCHES_KEY = 'inventory_cost_price_fixed_v5'; // More conservative fix - only clearly wrong batches (> 500K value)
+// NOTE: Previous auto-fix (v4) was too aggressive and may have incorrectly fixed valid batches
+// This version only fixes batches with clearly wrong values (> 500K batch value)
 
 /**
  * Check if batches have already been fixed (one-time fix)
@@ -42,27 +45,47 @@ export async function autoFixCostPriceData(): Promise<{
   };
 
   try {
-    const allBatches = await fetchStockBatches();
+    // Fetch ALL batches directly from database (including those with 0 quantity) 
+    // to analyze all data, not just active batches
+    const { data: batchData, error: batchError } = await supabase
+      .from('stock_batches')
+      .select('*');
     
-    // Find ALL batches that likely have cost_price stored as total pack cost instead of per-unit
+    if (batchError) {
+      throw new Error(`Failed to fetch batches: ${batchError.message}`);
+    }
+    
+    const allBatches = (batchData ?? []).map((record: any) => ({
+      id: record.id,
+      productId: record.product_id,
+      batchNumber: record.batch_number,
+      expiryDate: record.expiry_date,
+      costPrice: Number(record.cost_price ?? 0),
+      supplier: record.supplier ?? undefined,
+      receivedDate: record.received_date,
+      remainingQuantity: record.remaining_quantity ?? 0,
+      createdAt: record.created_at ?? new Date().toISOString(),
+    }));
+    
+    // Only fix batches with CLEARLY wrong values - batches where the total value is unusually high
     // We fix batches where:
-    // 1. cost_price > 100 (suspiciously high for a single unit in pharmacy inventory)
-    // 2. AND dividing cost_price by quantity gives a reasonable per-unit price (0.01 to 100,000)
-    // 3. This catches cases where cost_price was entered as pack cost
+    // 1. The batch value (cost_price * quantity) is > 500,000 NGN (clearly wrong)
+    // 2. AND dividing cost_price by quantity gives a reasonable per-unit price (0.01 to 10,000)
+    // 3. This only catches cases where cost_price was clearly entered as pack cost (very high values)
     const batchesToFix = allBatches.filter((batch) => {
       if (batch.remainingQuantity <= 0) return false;
-      if (batch.costPrice <= 100) return false; // Skip very low cost prices (likely already per-unit)
       
-      // Calculate what per-unit price would be if cost_price is total pack cost
-      const calculatedPerUnit = batch.costPrice / batch.remainingQuantity;
+      const batchValue = batch.remainingQuantity * batch.costPrice;
       
-      // If the calculated per-unit is reasonable (between 0.01 and 100,000 NGN per unit),
-      // and the current cost_price seems too high for a single unit (> 100),
-      // then cost_price is likely stored as total pack cost and should be fixed
-      if (calculatedPerUnit >= 0.01 && calculatedPerUnit <= 100000) {
-        // Fix if cost_price > 100 (seems high for per-unit) OR batch value > 100,000 (unusually high)
-        const batchValue = batch.remainingQuantity * batch.costPrice;
-        if (batch.costPrice > 100 || batchValue > 100000) {
+      // Only fix if batch value is clearly wrong (> 500,000 NGN)
+      // This is conservative - we only fix obvious mistakes, not borderline cases
+      if (batchValue > 500000) {
+        // Calculate what per-unit price would be if cost_price is total pack cost
+        const calculatedPerUnit = batch.costPrice / batch.remainingQuantity;
+        
+        // If the calculated per-unit is reasonable (between 0.01 and 10,000 NGN per unit),
+        // then cost_price is likely stored as total pack cost
+        if (calculatedPerUnit >= 0.01 && calculatedPerUnit <= 10000) {
           return true;
         }
       }
